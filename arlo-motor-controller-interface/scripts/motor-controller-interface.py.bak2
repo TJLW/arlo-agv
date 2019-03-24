@@ -1,0 +1,220 @@
+#!/usr/bin/env python
+
+# ROS Dependencies
+import math
+from math import sin, cos, pi
+import rospy
+import tf
+
+
+from geometry_msgs.msg import Point, Pose, Quaternion, Twist, Vector3
+from nav_msgs.msg import Odometry
+from std_msgs.msg import String
+
+# Core Dependencies
+import serial
+import time
+
+
+global currentLeftWheelSpeed
+global currentRightWheelSpeed
+global previousLeftWheelSpeed
+global previousRightWheelSpeed
+
+
+def velocity_callback(data):
+ global currentLeftWheelSpeed
+ global currentRightWheelSpeed
+ global previousLeftWheelSpeed
+ global previousRightWheelSpeed
+
+ #rospy.loginfo(rospy.get_caller_id() + "I heard %s", data)
+
+ currentLeftWheelSpeed = 0
+ currentRightWheelSpeed = 0
+
+ if data.linear.x:
+		 currentLeftWheelSpeed = encoder_postions_per_meter * data.linear.x
+		 currentRightWheelSpeed = encoder_postions_per_meter * data.linear.x
+
+ if data.angular.z > 0:
+		 currentRightWheelSpeed += encoder_postions_per_meter * data.angular.z * wheelbase_radius_meters
+		 currentLeftWheelSpeed -= encoder_postions_per_meter * data.angular.z * wheelbase_radius_meters
+ elif data.angular.z < 0:
+		 currentRightWheelSpeed += encoder_postions_per_meter * data.angular.z * wheelbase_radius_meters
+		 currentLeftWheelSpeed -= encoder_postions_per_meter * data.angular.z * wheelbase_radius_meters
+ #if abs(currentLeftWheelSpeed - previousLeftWheelSpeed) > 40 or abs(currentRightWheelSpeed - previousRightWheelSpeed) > 40:
+ #	 print 'Command is over threshold of 40 enc_steps/sec: GOSPD' + str(int(currentLeftWheelSpeed)) + ' ' + str(int(currentRightWheelSpeed))
+ if previousLeftWheelSpeed != currentLeftWheelSpeed or previousRightWheelSpeed != currentRightWheelSpeed:
+	 ser.write(('gospd ' + str(int(currentLeftWheelSpeed)) + ' ' + str(int(currentRightWheelSpeed)) + '\r').encode())
+	 print 'GOSPD' + str(int(currentLeftWheelSpeed)) + ' ' + str(int(currentRightWheelSpeed))
+
+ previousLeftWheelSpeed = currentLeftWheelSpeed
+ previousRightWheelSpeed = currentRightWheelSpeed
+
+ #time.sleep(0.2)
+
+
+if __name__ == '__main__':
+ ser = serial.Serial('/dev/ttyPS1', 19200, timeout=0.03)
+
+ ser.write('txpin ch2\r'.encode())
+ time.sleep(0.2)
+ ser.write('ramp 80\r'.encode())
+ time.sleep(0.2)
+ ser.write('acc 200\r'.encode())
+ time.sleep(0.2)
+
+ ros_ns = rospy.get_namespace()
+ rospy.init_node('motor_controller', anonymous=False)
+
+
+ rospy.Subscriber('/' + ros_ns + '/cmd_vel', Twist, velocity_callback)
+
+ odom_pub = rospy.Publisher("odom", Odometry, queue_size=50)
+ tf_broadcaster = tf.TransformBroadcaster()
+
+ # Statics
+ wheelbase_radius_meters = 0.19685
+ wheelbase_diameter_meters = wheelbase_radius_meters * 2
+ encoder_postions_per_meter = 300.7518
+
+
+ # Tracked odometry
+ x = 0.0
+ y = 0.0
+ th = 0.0
+
+ vx = 0.0
+ vy = 0.0
+ vth = 0.0
+
+ # Euler integrated pose defined in odometry frame
+ x_timestep_plus_one = 0.0
+ y_timestep_plus_one = 0.0
+ th_timestep_plus_one = 0.0
+
+
+ # Encoder readings
+ left_wheel_encoder_pos_per_sec = 0.0
+ right_wheel_encoder_pos_per_sec = 0.0
+
+
+ # Velocity estimations
+ left_wheel_velocity = 0.0
+ right_wheel_velocity = 0.0
+
+ vx_meters_per_sec = 0.0
+ vth_meters_per_sec = 0.0
+ vth_radians_per_sec = 0.0
+
+ # Position estimations
+ left_wheel_pos_meters = 0.0
+ right_wheel_pos_meters = 0.0
+
+ # Odometry frame
+ odom_vx_meters_per_sec = 0.0
+ odom_vy_meters_per_sec = 0.0
+ odom_vth_radians_per_sec = 0.0
+
+ currentLeftWheelSpeed = 0
+ currentRightWheelSpeed = 0
+ previousLeftWheelSpeed = 0
+ previousRightWheelSpeed = 0
+
+ current_time = rospy.Time.now()
+ last_time = rospy.Time.now()
+
+ # refresh_rate = 10.0 # Hz
+ # r = rospy.Rate(10.0)
+
+ while not rospy.is_shutdown():
+
+  ser.write(('spd\r').encode())
+  speed_response = ser.read(20)
+  #speed_response = '0 0'
+
+  ser.write(('head\r').encode())
+  heading_response = ser.read(20)
+  #heading_response = '0'
+
+  print 'Speed: ' + speed_response.strip('\r') + '   Heading: ' + heading_response.strip('\r')
+
+
+
+  if 'ERROR' not in speed_response and 'ERROR' not in heading_response:
+
+   current_time = rospy.Time.now()
+   dt = (current_time - last_time).to_sec()
+
+   left_wheel_encoder_pos_per_sec = int(speed_response.split()[0])
+   right_wheel_encoder_pos_per_sec = int(speed_response.split()[1])
+
+
+   left_wheel_velocity = left_wheel_encoder_pos_per_sec / encoder_postions_per_meter
+   right_wheel_velocity = right_wheel_encoder_pos_per_sec / encoder_postions_per_meter
+
+   vx_meters_per_sec = (left_wheel_velocity + right_wheel_velocity) / 2
+   vth_radians_per_sec = (left_wheel_velocity - right_wheel_velocity) / wheelbase_diameter_meters
+
+   th = float(-1 * int(heading_response) * math.pi / 180)
+
+   odom_vx_meters_per_sec = vx_meters_per_sec * math.cos(th) # - vy * sin(theta), vy = 0 for diff drive
+   odom_vy_meters_per_sec = vx_meters_per_sec * math.sin(th) # + vy * cos(theta)
+   odom_vth_radians_per_sec = vth_radians_per_sec
+
+   x_timestep_plus_one = x + (odom_vx_meters_per_sec * dt)
+   y_timestep_plus_one = y + (odom_vy_meters_per_sec * dt)
+   th_timestep_plus_one = th + (odom_vth_radians_per_sec * dt)
+
+   print str(x_timestep_plus_one) + ' ' + str(y_timestep_plus_one) + ' ' + str(th_timestep_plus_one)
+  # current_time = rospy.Time.now()
+
+  #print
+  #print(str(current_time))
+  #print(str(left_wheel_encoder_pos_per_sec) + ' pos/s')
+  #print(str(right_wheel_encoder_pos_per_sec) + ' pos/s')
+  #print(str(left_wheel_velocity) + ' m/s')
+  #print(str(right_wheel_velocity) + ' m/s')
+  #print(str(vx_meters_per_sec) + ' m/s')
+  #print(str(vth_meters_per_sec) + ' m/s')
+  #print(str(vth_radians_per_sec) + ' rad/s')
+  #print
+
+  # since all odometry is 6DOF we'll need a quaternion created from yaw
+  odom_quat = tf.transformations.quaternion_from_euler(0, 0, th_timestep_plus_one)
+
+  # first, we'll publish the transform over tf
+  tf_broadcaster.sendTransform(
+   (x_timestep_plus_one, y_timestep_plus_one, 0.),
+   odom_quat,
+   current_time,
+   "base_link",
+   "odom"
+  )
+
+  # next, we'll publish the odometry message over ROS
+  odom = Odometry()
+  odom.header.stamp = current_time
+  odom.header.frame_id = "odom"
+
+  # set the position
+  odom.pose.pose = Pose(Point(x_timestep_plus_one, y_timestep_plus_one, 0.), Quaternion(*odom_quat))
+
+  # set the velocity
+  odom.child_frame_id = "base_link"
+  odom.twist.twist = Twist(Vector3(vx_meters_per_sec, 0, 0), Vector3(0, 0, odom_vth_radians_per_sec))
+
+  # publish the message
+  odom_pub.publish(odom)
+
+
+  last_time = current_time
+  x = x_timestep_plus_one
+  y = y_timestep_plus_one
+  th = th_timestep_plus_one
+
+  #ser.write('rst\r'.encode())
+  #time.sleep(0.01)
+  rospy.sleep(0.001)
+

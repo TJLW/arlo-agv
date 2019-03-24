@@ -1,0 +1,8 @@
+#!/bin/bash
+
+killall map_server
+killall static_transform_publisher
+rosnode kill /move_base
+
+killall cartographer_occupancy_grid_node
+

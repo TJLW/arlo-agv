@@ -1,0 +1,24 @@
+#!/bin/bash
+
+trans_x=${1:-0}
+trans_y=${2:-0}
+trans_z=${3:-0}
+quat_x=${4:-0}
+quat_y=${5:-0}
+quat_z=${6:-0}
+quat_w=${7:-0}
+
+
+killall map_server
+killall static_transform_publisher
+
+rosrun cartographer_ros cartographer_occupancy_grid_node -resolution 0.05 &
+
+rosrun map_server map_saver -f /home/tjlw/ROS/maps/latest_cartographer_map
+
+killall cartographer_occupancy_grid_node &
+
+rosrun map_server map_server /home/tjlw/ROS/maps/latest_cartographer_map.yaml &
+rosrun tf static_transform_publisher $trans_x $trans_y $trans_z $quat_x $quat_y $quat_z $quat_w map odom 100 &
+
+

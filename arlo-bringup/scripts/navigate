@@ -1,0 +1,12 @@
+#!/bin/bash
+
+#rosrun map_server map_saver -f /home/tjlw/ROS/maps/latest_cartographer_map
+#rosservice call /finish_trajectory 0
+
+#killall cartographer_occupancy_grid_node
+#rosnode kill /cartographer_occupancy_grid_node
+
+#rosrun map_server map_server /home/tjlw/ROS/maps/latest_cartographer_map.yaml &
+#rosrun tf static_transform_publisher 0 0 0 0 0 0 map odom 100 &
+
+roslaunch arlo-navigation arlo-navigation.launch

@@ -1,0 +1,17 @@
+#!/bin/bash
+
+
+config_dir=$1
+config_basename=$2
+trajectory_id=$3
+pose_x=$4
+pose_y=$5
+pose_z=$6
+quat_x=$7
+quat_y=$8
+quat_z=$9
+
+rosrun cartographer_ros cartographer_start_trajectory  --configuration_directory=$config_dir --configuration_basename=$config_basename --initial_pose="{to_trajectory_id=$trajectory_id,relative_pose={translation={$pose_x, $pose_y, $pose_z},rotation={$quat_x, $quat_y, $quat_z}}, timestamp=0}"
+
+echo "Started trajectory."
+

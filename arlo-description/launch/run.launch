@@ -1,0 +1,9 @@
+<launch>
+
+	<node name="arlo" pkg="arlo-motor-controller-interface" type="motor-controller-interface.py" output="screen"/>
+
+	<rosparam file="$(find arlo-description)/config/diff-drive-controller-params.yaml" command="load"/>
+
+	<node name="ControllerMmanager" pkg="controller_manager" type="spawner" respawn="false" output="screen" args="diff_drive_controller"/>
+
+</launch>
