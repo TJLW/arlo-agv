@@ -2,6 +2,6 @@
   <param name="/use_sim_time" value="false" />
 
   <node name="rviz" pkg="rviz" type="rviz" respawn="true"
-      args="-d $(find arlo)/configuration_files/arlo.rviz" />
+      args="-d $(find arlo-bringup)/configuration_files/arlo.rviz" />
 
 </launch>
